@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Chat Application</title>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f0f0f0;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            gap: 20px;
+        }
+        .room-list {
+            width: 250px;
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        .room-item {
+            padding: 10px;
+            margin: 5px 0;
+            cursor: pointer;
+            border-radius: 5px;
+            display: flex;
+            justify-content: space-between;
+        }
+        .room-item:hover {
+            background-color: #f5f5f5;
+        }
+        .room-item.active {
+            background-color: #3498db;
+            color: white;
+        }
+        .chat-area {
+            flex: 1;
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        #messages {
+            height: 500px;
+            overflow-y: auto;
+            margin-bottom: 20px;
+            border: 1px solid #ddd;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        .message {
+            margin-bottom: 15px;
+            padding: 10px;
+            border-radius: 5px;
+            background-color: #f8f9fa;
+        }
+        .message.sender {
+            font-weight: bold;
+            color: #3498db;
+        }
+        .input-area {
+            display: flex;
+            gap: 10px;
+        }
+        input[type="text"] {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        button {
+            padding: 10px 20px;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        #username-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-content {
+            background: white;
+            padding: 20px;
+            border-radius: 5px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div id="username-modal" style="display: block;">
+        <div class="modal-content">
+            <h2>Enter Your Name</h2>
+            <input type="text" id="username-input" placeholder="Your name">
+            <button onclick="setUsername()">Join Chat</button>
+        </div>
+    </div>
+
+    <div class="container" style="display: none;">
+        <div class="room-list">
+            <h2>Available Rooms</h2>
+            <div id="rooms-container"></div>
+        </div>
+        
+        <div class="chat-area">
+            <div id="messages"></div>
+            <div class="input-area">
+                <input type="text" id="message-input" placeholder="Type your message...">
+                <button onclick="sendMessage()">Send</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const socket = io('http://localhost:5000');
+        let currentRoom = null;
+        let username = null;
+
+        function setUsername() {
+            username = document.getElementById('username-input').value.trim();
+            if(username) {
+                document.getElementById('username-modal').style.display = 'none';
+                document.querySelector('.container').style.display = 'flex';
+            }
+        }
+
+        socket.on('room_list', (rooms) => {
+            const container = document.getElementById('rooms-container');
+            container.innerHTML = Object.values(rooms).map(room => `
+                <div class="room-item ${room.name === currentRoom ? 'active' : ''}" 
+                     onclick="joinRoom('${room.name}')">
+                    <span>${room.name}</span>
+                    <span>${room.count} users</span>
+                </div>
+            `).join('');
+        });
+
+        function joinRoom(roomName) {
+            if(username) {
+                socket.emit('join_room', {
+                    room_name: roomName,
+                    username: username
+                });
+                currentRoom = roomName;
+            }
+        }
+
+        socket.on('receive_message', (message) => {
+            const messagesDiv = document.getElementById('messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message';
+            messageDiv.innerHTML = `
+                <div class="sender">${message.sender}</div>
+                <div>${message.text}</div>
+                <div style="font-size: 0.8em; color: #666;">
+                    ${new Date(message.timestamp).toLocaleTimeString()}
+                </div>
+            `;
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        });
+
+        socket.on('system_message', (message) => {
+            const messagesDiv = document.getElementById('messages');
+            const systemDiv = document.createElement('div');
+            systemDiv.className = 'message system';
+            systemDiv.innerHTML = `
+                <div style="color: #666; font-style: italic;">
+                    ${message.text} - ${new Date(message.timestamp).toLocaleTimeString()}
+                </div>
+            `;
+            messagesDiv.appendChild(systemDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        });
+
+        function sendMessage() {
+            const input = document.getElementById('message-input');
+            const text = input.value.trim();
+            if(text && currentRoom) {
+                socket.emit('send_message', { text: text });
+                input.value = '';
+            }
+        }
+
+        socket.on('room_update', (rooms) => {
+            document.querySelectorAll('.room-item').forEach(item => {
+                const roomName = item.querySelector('span:first-child').textContent;
+                const room = rooms[roomName];
+                if(room) {
+                    item.querySelector('span:last-child').textContent = `${room.count} users`;
+                }
+            });
+        });
+    </script>
+</body>
+</html>
